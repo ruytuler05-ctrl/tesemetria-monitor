@@ -1,0 +1,132 @@
+name: Monitor externo
+
+on:
+  schedule:
+    - cron: "2-57/5 * * * *"
+    - cron: "19 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: tesemetria-monitor-externo
+  cancel-in-progress: true
+
+jobs:
+  disponibilidade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Baixar o monitor
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.18.0
+
+      - name: Verificar site, PostgreSQL, HTTPS e dominios
+        id: monitor
+        shell: bash
+        run: |
+          set +e
+          node monitor.mjs > monitor.log 2>&1
+          exit_code="$?"
+          cat monitor.log
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Abrir ou atualizar incidente
+        if: steps.monitor.outputs.exit_code != '0'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          INCIDENT_LOG: monitor.log
+        with:
+          script: |
+            const fs = require("fs");
+            const title = "[Monitor] Tesemetria indisponivel ou certificado em risco";
+            const log = fs.readFileSync(process.env.INCIDENT_LOG, "utf8").slice(-6000);
+            const body = [
+              "O monitor publico, executado fora da VPS, detectou uma falha.",
+              "",
+              `Execucao: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              "",
+              "```text",
+              log,
+              "```",
+            ].join("\n");
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = issues.find(
+              (issue) => !issue.pull_request && issue.title === title,
+            );
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }
+
+      - name: Encerrar incidente apos recuperacao
+        if: steps.monitor.outputs.exit_code == '0'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const title = "[Monitor] Tesemetria indisponivel ou certificado em risco";
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = issues.find(
+              (issue) => !issue.pull_request && issue.title === title,
+            );
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                state: "closed",
+                state_reason: "completed",
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `Servico recuperado e validado em ${new Date().toISOString()}.`,
+              });
+            }
+
+      - name: Atualizar prova externa semanal
+        if: github.event.schedule == '19 6 * * 1' && steps.monitor.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          cp monitor.log status/latest.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add status/latest.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: atualiza prova semanal do monitor"
+            git push
+          fi
+
+      - name: Marcar a execucao como falha
+        if: steps.monitor.outputs.exit_code != '0'
+        run: exit 1
+
