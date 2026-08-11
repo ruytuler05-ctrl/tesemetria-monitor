@@ -44,8 +44,11 @@ async function checkHttp({ path, kind }) {
     const payload = await response.json();
     if (
       payload?.status !== "ok" ||
-      payload?.service !== "tesemetria" ||
-      payload?.database !== "postgres"
+      payload?.database !== "postgres" ||
+      payload?.asyncProcessing !== "ok" ||
+      payload?.recovery?.status !== "healthy" ||
+      typeof payload?.release !== "string" ||
+      payload.release.length < 7
     ) {
       throw new Error(`${path}: resposta de saude invalida`);
     }

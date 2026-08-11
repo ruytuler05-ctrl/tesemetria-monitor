@@ -7,7 +7,8 @@ Monitor publico e independente da VPS de producao do
 
 ## O que e verificado
 
-- saude da aplicacao e conexao com PostgreSQL;
+- saude da aplicacao, conexao com PostgreSQL e release publicado;
+- processamento assincrono e recuperacao externa operacionais;
 - paginas publicas essenciais;
 - HTTPS e validade dos certificados;
 - dominio canonico `www.tesemetria.com.br`;
