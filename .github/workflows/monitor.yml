@@ -27,7 +27,10 @@ jobs:
         with:
           node-version: 24.18.0
 
-      - name: Verificar site, PostgreSQL, HTTPS e dominios
+      - name: Testar o monitor
+        run: node --test monitor.test.mjs
+
+      - name: Verificar DNS, TCP, TLS, aplicacao e dominios
         id: monitor
         shell: bash
         run: |
@@ -39,7 +42,7 @@ jobs:
           exit 0
 
       - name: Abrir ou atualizar incidente
-        if: steps.monitor.outputs.exit_code != '0'
+        if: github.ref == 'refs/heads/main' && steps.monitor.outputs.exit_code != '0'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         env:
           INCIDENT_LOG: monitor.log
@@ -47,14 +50,21 @@ jobs:
           script: |
             const fs = require("fs");
             const title = "[Monitor] Tesemetria indisponivel ou certificado em risco";
-            const log = fs.readFileSync(process.env.INCIDENT_LOG, "utf8").slice(-6000);
+            const raw = fs.readFileSync(process.env.INCIDENT_LOG, "utf8").trim();
+            let report;
+            try { report = JSON.parse(raw); } catch { report = { error: { message: raw } }; }
+            const detail = report.error && typeof report.error === "object"
+              ? JSON.stringify(report.error, null, 2)
+              : String(report.error || raw);
             const body = [
-              "O monitor publico, executado fora da VPS, detectou uma falha.",
+              "O monitor publico, executado em runner hospedado pelo GitHub e fora da VPS, detectou uma falha.",
               "",
+              `Etapa: \`${report.failedStep || "desconhecida"}\``,
+              `Momento UTC: \`${report.finishedAt || report.checkedAt || new Date().toISOString()}\``,
               `Execucao: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               "",
-              "```text",
-              log,
+              "```json",
+              detail.slice(-6000),
               "```",
             ].join("\n");
             const { data: issues } = await github.rest.issues.listForRepo({
@@ -72,6 +82,7 @@ jobs:
                 repo: context.repo.repo,
                 issue_number: existing.number,
                 body,
+                assignees: [context.repo.owner],
               });
             } else {
               await github.rest.issues.create({
@@ -79,11 +90,12 @@ jobs:
                 repo: context.repo.repo,
                 title,
                 body,
+                assignees: [context.repo.owner],
               });
             }
 
       - name: Encerrar incidente apos recuperacao
-        if: steps.monitor.outputs.exit_code == '0'
+        if: github.ref == 'refs/heads/main' && steps.monitor.outputs.exit_code == '0'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         with:
           script: |
@@ -98,6 +110,12 @@ jobs:
               (issue) => !issue.pull_request && issue.title === title,
             );
             if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `Servico recuperado e validado externamente em ${new Date().toISOString()}.`,
+              });
               await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -105,16 +123,10 @@ jobs:
                 state: "closed",
                 state_reason: "completed",
               });
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: existing.number,
-                body: `Servico recuperado e validado em ${new Date().toISOString()}.`,
-              });
             }
 
-      - name: Atualizar prova externa semanal
-        if: github.event.schedule == '19 6 * * 1' && steps.monitor.outputs.exit_code == '0'
+      - name: Atualizar estado externo nas transicoes
+        if: github.ref == 'refs/heads/main' && always() && steps.monitor.outcome == 'success'
         shell: bash
         run: |
           cp monitor.log status/latest.json
@@ -122,11 +134,17 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add status/latest.json
           if ! git diff --cached --quiet; then
-            git commit -m "chore: atualiza prova semanal do monitor"
-            git push
+            previous="$(git show HEAD:status/latest.json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log([j.status,j.failedStep||"",j.error?.code||"",j.error?.message||""].join("|"))}catch{}})')"
+            current="$(node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("status/latest.json","utf8"));console.log([j.status,j.failedStep||"",j.error?.code||"",j.error?.message||""].join("|"))')"
+            if [ "$previous" != "$current" ] || [ "${{ github.event.schedule }}" = "19 6 * * 1" ]; then
+              git commit -m "chore: atualiza estado do monitor externo"
+              git push
+            else
+              git restore --staged status/latest.json
+              git restore status/latest.json
+            fi
           fi
 
       - name: Marcar a execucao como falha
         if: steps.monitor.outputs.exit_code != '0'
         run: exit 1
-
