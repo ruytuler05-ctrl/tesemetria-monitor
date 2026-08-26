@@ -44,17 +44,14 @@ test("exige o contrato completo da saude da aplicacao", () => {
       release: "abcdef123456",
     },
   );
-  assert.throws(
-    () =>
-      validateHealthPayload({
-        status: "ok",
-        database: "postgres",
-        asyncProcessing: "failed",
-        recovery: { status: "healthy" },
-        release: "abcdef123456",
-      }),
-    /resposta de saude invalida/,
-  );
+  assert.throws(() =>
+    validateHealthPayload({
+      status: "ok",
+      database: "postgres",
+      asyncProcessing: "failed",
+      recovery: { status: "healthy" },
+      release: "abcdef123456",
+    }), /resposta de saude invalida.*asyncProcessing.*failed/);
 });
 
 test("exige HSTS por pelo menos um ano", () => {

@@ -78,23 +78,24 @@ export function validateStrictTransportSecurity(value) {
 }
 
 export function validateHealthPayload(payload) {
-  if (
-    payload?.status !== "ok" ||
-    payload?.database !== "postgres" ||
-    payload?.asyncProcessing !== "ok" ||
-    payload?.recovery?.status !== "healthy" ||
-    typeof payload?.release !== "string" ||
-    payload.release.length < 7
-  ) {
-    throw new Error("resposta de saude invalida");
-  }
-  return {
-    status: payload.status,
-    database: payload.database,
-    asyncProcessing: payload.asyncProcessing,
-    recovery: payload.recovery.status,
-    release: payload.release,
+  const summary = {
+    status: payload?.status ?? null,
+    database: payload?.database ?? null,
+    asyncProcessing: payload?.asyncProcessing ?? null,
+    recovery: payload?.recovery?.status ?? null,
+    release: payload?.release ?? null,
   };
+  if (
+    summary.status !== "ok" ||
+    summary.database !== "postgres" ||
+    summary.asyncProcessing !== "ok" ||
+    summary.recovery !== "healthy" ||
+    typeof summary.release !== "string" ||
+    summary.release.length < 7
+  ) {
+    throw new Error(`resposta de saude invalida: ${JSON.stringify(summary)}`);
+  }
+  return summary;
 }
 
 export async function resolveHost(hostname) {
