@@ -279,6 +279,7 @@ async function collectStep(report, step, callback) {
 export async function runMonitor(baseUrlInput = DEFAULT_BASE_URL) {
   const baseUrl = new URL(baseUrlInput);
   const report = {
+    monitorVersion: 2,
     status: "running",
     checkedAt: new Date().toISOString(),
     baseUrl: baseUrl.origin,

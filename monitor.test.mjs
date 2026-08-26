@@ -83,5 +83,7 @@ test("mantem o probe externo, a porta 443 e o timeout P0 no workflow", async () 
   assert.match(source, /connectTcp/);
   assert.match(source, /connectTls/);
   assert.match(source, /port: 443/);
+  assert.match(source, /monitorVersion: 2/);
+  assert.match(workflow, /j\.monitorVersion\|\|0/);
   assert.equal(CONNECTION_TIMEOUT_MS, 6_000);
 });

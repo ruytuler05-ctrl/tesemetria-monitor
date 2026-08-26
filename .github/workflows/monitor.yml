@@ -134,8 +134,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add status/latest.json
           if ! git diff --cached --quiet; then
-            previous="$(git show HEAD:status/latest.json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log([j.status,j.failedStep||"",j.error?.code||"",j.error?.message||""].join("|"))}catch{}})')"
-            current="$(node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("status/latest.json","utf8"));console.log([j.status,j.failedStep||"",j.error?.code||"",j.error?.message||""].join("|"))')"
+            previous="$(git show HEAD:status/latest.json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log([j.monitorVersion||0,j.status,j.failedStep||"",j.error?.code||"",j.error?.message||""].join("|"))}catch{}})')"
+            current="$(node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("status/latest.json","utf8"));console.log([j.monitorVersion||0,j.status,j.failedStep||"",j.error?.code||"",j.error?.message||""].join("|"))')"
             if [ "$previous" != "$current" ] || [ "${{ github.event.schedule }}" = "19 6 * * 1" ]; then
               git commit -m "chore: atualiza estado do monitor externo"
               git push
