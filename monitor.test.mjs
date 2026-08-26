@@ -44,17 +44,14 @@ test("exige o contrato completo da saude da aplicacao", () => {
       release: "abcdef123456",
     },
   );
-  assert.throws(
-    () =>
-      validateHealthPayload({
-        status: "ok",
-        database: "postgres",
-        asyncProcessing: "failed",
-        recovery: { status: "healthy" },
-        release: "abcdef123456",
-      }),
-    /resposta de saude invalida/,
-  );
+  assert.throws(() =>
+    validateHealthPayload({
+      status: "ok",
+      database: "postgres",
+      asyncProcessing: "failed",
+      recovery: { status: "healthy" },
+      release: "abcdef123456",
+    }), /resposta de saude invalida.*asyncProcessing.*failed/);
 });
 
 test("exige HSTS por pelo menos um ano", () => {
@@ -83,5 +80,7 @@ test("mantem o probe externo, a porta 443 e o timeout P0 no workflow", async () 
   assert.match(source, /connectTcp/);
   assert.match(source, /connectTls/);
   assert.match(source, /port: 443/);
+  assert.match(source, /monitorVersion: 2/);
+  assert.match(workflow, /j\.monitorVersion\|\|0/);
   assert.equal(CONNECTION_TIMEOUT_MS, 6_000);
 });
